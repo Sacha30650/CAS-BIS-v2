@@ -56,7 +56,16 @@ export function fmtCoord(p: LatLng | null, f: CoordFormat): string {
   switch (f) {
     case 'dd': return `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`
     case 'dms': return `${toDMS(c.lat, 'lat')} ${toDMS(c.lng, 'lng')}`
-    case 'mgrs': return mgrs.forward([c.lng, c.lat], 5)
+    case 'mgrs': {
+      const raw = mgrs.forward([c.lng, c.lat], 5)
+      // Format: 31T FJ 13181 46215
+      const m = raw.match(/^(\d+[A-Z])([A-Z]{2})(\d+)$/)
+      if (m) {
+        const d = m[3], h = Math.floor(d.length / 2)
+        return `${m[1]} ${m[2]} ${d.slice(0, h)} ${d.slice(h)}`
+      }
+      return raw
+    }
     case 'utm': { const u = toUTM(c); return `${u.zone} ${u.e}E ${u.n}N` }
   }
 }
@@ -114,32 +123,97 @@ export function lineFC(a: LatLng, b: LatLng) {
   return { type: 'FeatureCollection' as const, features: [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [[a.lng, a.lat], [b.lng, b.lat]] } }] }
 }
 
-// --- Grid ---
-function gridStep(z: number, mode: GridMode): number {
-  if (mode === 'off') return 0
-  const base = mode === 'fine'
-    ? [[15, 0.0025], [13, 0.005], [11, 0.01], [9, 0.025], [0, 0.05]]
-    : [[15, 0.005], [13, 0.01], [11, 0.025], [9, 0.05], [7, 0.1], [0, 0.5]]
-  for (const [z2, s] of base) if (z >= z2) return s as number
-  return 0.5
+// --- UTM inverse ---
+export function fromUTM(zoneNum: number, easting: number, northing: number): LatLng {
+  let n = northing
+  const isNorth = n < 10000000
+  if (!isNorth) n -= 10000000
+  const lon0 = rad((zoneNum - 1) * 6 - 180 + 3)
+  const x = easting - 500000
+  const y = n
+  const e1 = Math.sqrt(E2)
+  const eP2 = E2 / (1 - E2)
+  const M = y / K0
+  const mu = M / (A * (1 - E2/4 - 3*E2*E2/64 - 5*E2*E2*E2/256))
+  const phi1 = mu + (3*e1/2 - 27*e1**3/32) * Math.sin(2*mu)
+    + (21*e1*e1/16 - 55*e1**4/32) * Math.sin(4*mu)
+    + (151*e1**3/96) * Math.sin(6*mu)
+  const N1 = A / Math.sqrt(1 - E2 * Math.sin(phi1)**2)
+  const T1 = Math.tan(phi1)**2
+  const C1 = eP2 * Math.cos(phi1)**2
+  const R1 = A * (1 - E2) / (1 - E2 * Math.sin(phi1)**2)**1.5
+  const D = x / (N1 * K0)
+  const lat = phi1 - (N1 * Math.tan(phi1) / R1) * (D*D/2
+    - (5 + 3*T1 + 10*C1 - 4*C1*C1 - 9*eP2) * D**4/24
+    + (61 + 90*T1 + 298*C1 + 45*T1*T1 - 252*eP2 - 3*C1*C1) * D**6/720)
+  const lng = lon0 + (D - (1 + 2*T1 + C1) * D**3/6
+    + (5 - 2*C1 + 28*T1 - 3*C1*C1 + 8*eP2 + 24*T1*T1) * D**5/120) / Math.cos(phi1)
+  return { lat: deg(lat), lng: deg(lng) }
 }
 
-export function gridFC(
+// --- MGRS km grid ---
+function mgrsGridSpacing(zoom: number): number {
+  if (zoom >= 14) return 1000    // 1 km
+  if (zoom >= 11) return 1000    // 1 km
+  if (zoom >= 9) return 10000    // 10 km
+  return 100000                   // 100 km
+}
+
+export function mgrsGridFC(
   b: { getWest: () => number; getEast: () => number; getSouth: () => number; getNorth: () => number },
-  zoom: number, mode: GridMode,
+  zoom: number,
+  mode: GridMode,
 ) {
-  if (mode === 'off') return { type: 'FeatureCollection' as const, features: [] }
-  const step = gridStep(zoom, mode)
-  const w = Math.floor(b.getWest() / step) * step
-  const e = Math.ceil(b.getEast() / step) * step
-  const s = Math.floor(b.getSouth() / step) * step
-  const n = Math.ceil(b.getNorth() / step) * step
+  if (mode === 'off') return { type: 'FeatureCollection' as const, features: [] as object[] }
+
+  const spacing = mgrsGridSpacing(zoom)
+  const sw = toUTM({ lat: b.getSouth(), lng: b.getWest() })
+  const ne = toUTM({ lat: b.getNorth(), lng: b.getEast() })
+  const zoneNum = parseInt(sw.zone)
+
+  // Align to spacing
+  const eStart = Math.floor(sw.e / spacing) * spacing
+  const eEnd = Math.ceil(ne.e / spacing) * spacing
+  const nStart = Math.floor(sw.n / spacing) * spacing
+  const nEnd = Math.ceil(ne.n / spacing) * spacing
+
   const features: object[] = []
-  for (let lng = w; lng <= e; lng += step)
-    features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[Number(lng.toFixed(6)), s], [Number(lng.toFixed(6)), n]] } })
-  for (let lat = s; lat <= n; lat += step)
-    features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[w, Number(lat.toFixed(6))], [e, Number(lat.toFixed(6))]] } })
-  return { type: 'FeatureCollection' as const, features }
+  const labelFeatures: object[] = []
+
+  // Vertical lines (easting)
+  for (let e = eStart; e <= eEnd; e += spacing) {
+    const top = fromUTM(zoneNum, e, Math.min(nEnd, nStart + 100000))
+    const bot = fromUTM(zoneNum, e, Math.max(nStart, nEnd - 100000))
+    features.push({
+      type: 'Feature', properties: { axis: 'v' },
+      geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
+    })
+    // Label = last 2 digits of the km value (e.g. 45000 → "45")
+    const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
+    const labelPt = fromUTM(zoneNum, e, nEnd - spacing * 0.3)
+    labelFeatures.push({
+      type: 'Feature', properties: { label: labelNum, axis: 'v' },
+      geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+    })
+  }
+
+  // Horizontal lines (northing)
+  for (let nn = nStart; nn <= nEnd; nn += spacing) {
+    const left = fromUTM(zoneNum, Math.max(eStart, eEnd - 100000), nn)
+    const right = fromUTM(zoneNum, Math.min(eEnd, eStart + 100000), nn)
+    features.push({
+      type: 'Feature', properties: { axis: 'h' },
+      geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
+    })
+    const labelNum = String(Math.floor((nn % 100000) / 1000)).padStart(2, '0')
+    const labelPt = fromUTM(zoneNum, eStart + spacing * 0.3, nn)
+    labelFeatures.push({
+      type: 'Feature', properties: { label: labelNum, axis: 'h' },
+      geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+    })
+  }
+
+  return { type: 'FeatureCollection' as const, features: [...features, ...labelFeatures] }
 }
 
 // --- Cardinal ---

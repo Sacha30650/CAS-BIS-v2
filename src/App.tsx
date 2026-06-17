@@ -7,7 +7,7 @@ import { demoMarkers, sideColors, sideNames, sideShort, typeIcons, typeNames } f
 import { mapStyle } from './mapStyle'
 import {
   bearing, card, decl, fmtAlt, fmtCoord, fmtDist, fmtHdg, fmtKt,
-  gridFC, havM, lineFC, ringsFC, revBrg, slant, toMils,
+  mgrsGridFC, havM, lineFC, ringsFC, revBrg, slant, toMils,
 } from './geo'
 import { themes, themeNames, type Theme } from './themes'
 import type { CoordFormat, DistUnit, GridMode, LatLng, MarkerType, Role, Side, TMarker, ViewState } from './types'
@@ -113,7 +113,24 @@ function App() {
 
     m.on('load', () => {
       m.addSource('grid', { type: 'geojson', data: emptyFC })
-      m.addLayer({ id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': 'rgba(143,255,172,0.4)', 'line-width': 0.8, 'line-opacity': 0.5 } })
+      m.addLayer({ id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': 'rgba(143,255,172,0.35)', 'line-width': 0.8, 'line-opacity': 0.6 }, filter: ['==', '$type', 'LineString'] })
+      m.addLayer({
+        id: 'grid-labels', type: 'symbol', source: 'grid',
+        filter: ['==', '$type', 'Point'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 11,
+          'text-font': ['Noto Sans Bold'],
+          'text-anchor': 'center',
+          'text-offset': ['case', ['==', ['get', 'axis'], 'v'], ['literal', [0, 0]], ['literal', [-1.2, 0]]],
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': 'rgba(143,255,172,0.85)',
+          'text-halo-color': 'rgba(0,0,0,0.8)',
+          'text-halo-width': 2,
+        },
+      })
       m.addSource('rings', { type: 'geojson', data: emptyFC })
       m.addLayer({ id: 'rings', type: 'line', source: 'rings', paint: { 'line-color': 'rgba(255,205,99,0.85)', 'line-width': 1.3, 'line-dasharray': [2, 2] } })
       m.addSource('caseline', { type: 'geojson', data: emptyFC })
@@ -183,8 +200,10 @@ function App() {
   useEffect(() => {
     const m = mapRef.current; if (!m || !ready) return
     const src = m.getSource('grid') as GeoJSONSource | undefined; if (!src) return
-    src.setData(gridFC(m.getBounds(), m.getZoom(), grid))
-    m.setLayoutProperty('grid', 'visibility', grid === 'off' ? 'none' : 'visible')
+    src.setData(mgrsGridFC(m.getBounds(), m.getZoom(), grid))
+    const vis = grid === 'off' ? 'none' : 'visible'
+    m.setLayoutProperty('grid', 'visibility', vis)
+    m.setLayoutProperty('grid-labels', 'visibility', vis)
   }, [grid, ready, view.lat, view.lng, view.zoom])
 
   // Rings
