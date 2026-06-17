@@ -48,6 +48,11 @@ function App() {
   const [vis, setVis] = useState<Record<Side, boolean>>({ friendly: true, hostile: true, neutral: true })
   const [theme, setTheme] = useState<Theme>('day')
 
+  // Panel visibility — collapsed by default for minimalist view
+  const [showLeft, setShowLeft] = useState(false)
+  const [showRight, setShowRight] = useState(false)
+  const [hudMin, setHudMin] = useState(true)
+
   // Derived
   const selM = useMemo(() => markers.find(m => m.id === sel) ?? null, [sel, markers])
   const selPt = useMemo<LatLng | null>(() => (selM ? { lat: selM.lat, lng: selM.lng } : click), [click, selM])
@@ -234,137 +239,165 @@ function App() {
   const types = Object.entries(typeNames)
 
   return (
-    <div className={`app${placing ? ' placing' : ''}`}>
+    <div className={`app${placing ? ' placing' : ''}${showLeft ? ' L-open' : ''}${showRight ? ' R-open' : ''}`}>
       <div className="mapwrap">
         <div ref={divRef} className="map" />
         <div className="reticle" />
-        {placing && <div className="banner" role="status" aria-live="polite">● Placement {sideNames[cSide]} — {typeNames[cType]} — Clic pour poser</div>}
+        {placing && <div className="banner">● {sideNames[cSide]} — {typeNames[cType]} — TAP MAP</div>}
       </div>
 
-      {/* LEFT */}
-      <div className="panel L">
-        <div className="hdr"><span className="tag">CAS BIS</span><h1>CAS Navigator</h1></div>
-        <div className="warn"><b>SIMULATION</b><span>Entraînement cartographique fictif. Pas d'usage opérationnel.</span></div>
-
-        <div className="blk">
-          <div className="lab">Ajouter un marqueur</div>
-          <div className="r3">
-            {(['friendly','hostile','neutral'] as Side[]).map(s => (
-              <button key={s} aria-pressed={cSide === s} className={`b ${cSide === s ? 'a ' + s : ''}`} onClick={() => setCSide(s)}>{sideNames[s]}</button>
-            ))}
-          </div>
-          <select className="dd" value={cType} onChange={e => setCType(e.target.value as MarkerType)} aria-label="Type de marqueur">
-            {types.map(([k,v]) => <option key={k} value={k}>{typeIcons[k]} {v}</option>)}
-          </select>
-          <button className="go" aria-pressed={placing} onClick={() => setPlacing(v => !v)}>{placing ? '✕ Annuler' : '+ Placer'}</button>
+      {/* TOP HUD — minimaliste, toujours visible */}
+      <div className={`hud-top${hudMin ? ' min' : ''}`}>
+        <button className="hud-btn" aria-label="Outils" onClick={() => { setShowLeft(v => !v); setShowRight(false) }}>
+          <span className="hud-ic">⚙</span>
+        </button>
+        <div className="hud-center">
+          <span className="hud-title">CAS BIS</span>
+          <span className="hud-coord">{fmtCoord({ lat: view.lat, lng: view.lng }, cf)}</span>
         </div>
-
-        <div className="blk g2">
-          <label className="lab">Coordonnées
-            <select className="dd" value={cf} onChange={e => setCF(e.target.value as CoordFormat)}>
-              {coordOpts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-            </select>
-          </label>
-          <label className="lab">Unités
-            <select className="dd" value={du} onChange={e => setDU(e.target.value as DistUnit)}>
-              <option value="meters">Mètres</option><option value="feet">Pieds (ft)</option>
-            </select>
-          </label>
-          <label className="lab">Grille
-            <select className="dd" value={grid} onChange={e => setGrid(e.target.value as GridMode)}>
-              <option value="auto">Auto</option><option value="fine">Fine</option><option value="off">Off</option>
-            </select>
-          </label>
-          <label className="lab">Rôle
-            <select className="dd" value={role} onChange={e => setRole(e.target.value as Role)}>
-              <option value="JTAC">JTAC</option><option value="Pilot">Pilote</option><option value="Observer">Observateur</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="tg">
-          <label><input type="checkbox" checked={showRings} onChange={e => setShowRings(e.target.checked)} /> Range rings</label>
-          <label><input type="checkbox" checked={showLine} onChange={e => setShowLine(e.target.checked)} /> Ligne IP→Cible</label>
-          <label><input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} /> Labels markers</label>
-          <label><input type="checkbox" checked={showRef} onChange={e => setShowRef(e.target.checked)} /> Labels carte</label>
-          <label><input type="checkbox" checked={show3D} onChange={e => setShow3D(e.target.checked)} /> Relief 3D</label>
-        </div>
-
-        <div className="blk theme-row">
-          <div className="lab">Thème affichage</div>
-          <div className="r4">
-            {(Object.keys(themes) as Theme[]).map(t => (
-              <button key={t} className={`b th ${t}${theme === t ? ' on' : ''}`} onClick={() => setTheme(t)}>{themeNames[t]}</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="ro"><div className="rc"><span>Curseur</span><code aria-live="polite">{fmtCoord(cur, cf)}</code></div>
-        <div className="rc"><span>Centre carte</span><code>{fmtCoord({ lat: view.lat, lng: view.lng }, cf)}</code></div></div>
+        <button className="hud-btn" aria-label="Situation" onClick={() => { setShowRight(v => !v); setShowLeft(false) }}>
+          <span className="hud-ic">◉</span>
+          {counts.hostile > 0 && <span className="hud-badge">{counts.friendly + counts.hostile + counts.neutral}</span>}
+        </button>
       </div>
 
-      {/* RIGHT */}
-      <div className="panel R">
-        <div className="hdr-r"><div><span className="tag">SITAC</span><h2>Situation</h2></div>
-          <button className="gh" onClick={reset}>↺ Reset</button></div>
+      {/* LEFT PANEL — Outils */}
+      {showLeft && (
+        <div className="panel-overlay" onClick={() => setShowLeft(false)}>
+          <div className="panel L" onClick={e => e.stopPropagation()}>
+            <div className="panel-bar">
+              <span className="tag">CAS BIS — Outils</span>
+              <button className="close-btn" onClick={() => setShowLeft(false)}>✕</button>
+            </div>
 
-        <div className="r3 counts">
-          {(['friendly','hostile','neutral'] as Side[]).map(s => (
-            <button key={s} className={`b count ${s}${vis[s] ? '' : ' dim'}`} onClick={() => setVis(c => ({ ...c, [s]: !c[s] }))}>
-              <span className="cn">{counts[s]}</span><span className="cl">{sideNames[s]}</span>
-            </button>
-          ))}
-        </div>
+            <div className="blk">
+              <div className="lab">Ajouter un marqueur</div>
+              <div className="r3">
+                {(['friendly','hostile','neutral'] as Side[]).map(s => (
+                  <button key={s} className={`b ${cSide === s ? 'a ' + s : ''}`} onClick={() => setCSide(s)}>{sideNames[s]}</button>
+                ))}
+              </div>
+              <select className="dd" value={cType} onChange={e => setCType(e.target.value as MarkerType)}>
+                {types.map(([k,v]) => <option key={k} value={k}>{typeIcons[k]} {v}</option>)}
+              </select>
+              <button className="go" onClick={() => { setPlacing(v => !v); setShowLeft(false) }}>{placing ? '✕ Annuler' : '+ Placer'}</button>
+            </div>
 
-        {cas && (
-          <div className="cas">
-            <span className="tag">Solution CAS (IP→Cible)</span>
-            <div className="cg">
-              <div><span>Dist sol</span><b>{fmtDist(cas.d, du)}</b></div>
-              <div><span>Slant</span><b>{fmtDist(cas.sr, du)}</b></div>
-              <div><span>Cap aller</span><b>{fmtHdg(cas.br)} {card(cas.br)}</b></div>
-              <div><span>Cap retour</span><b>{fmtHdg(cas.rev)} {card(cas.rev)}</b></div>
-              <div><span>Élévation</span><b>{cas.el > 0 ? '+' : ''}{cas.el.toFixed(1)}°</b></div>
-              <div><span>Mils OTAN</span><b>{cas.mils}</b></div>
+            <div className="blk g2">
+              <label className="lab">Coordonnées
+                <select className="dd" value={cf} onChange={e => setCF(e.target.value as CoordFormat)}>
+                  {coordOpts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+              </label>
+              <label className="lab">Unités
+                <select className="dd" value={du} onChange={e => setDU(e.target.value as DistUnit)}>
+                  <option value="meters">Mètres</option><option value="feet">Pieds</option>
+                </select>
+              </label>
+              <label className="lab">Grille
+                <select className="dd" value={grid} onChange={e => setGrid(e.target.value as GridMode)}>
+                  <option value="auto">Auto</option><option value="fine">Fine</option><option value="off">Off</option>
+                </select>
+              </label>
+              <label className="lab">Rôle
+                <select className="dd" value={role} onChange={e => setRole(e.target.value as Role)}>
+                  <option value="JTAC">JTAC</option><option value="Pilot">Pilote</option><option value="Observer">Observateur</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="tg">
+              <label><input type="checkbox" checked={showRings} onChange={e => setShowRings(e.target.checked)} /> Range rings</label>
+              <label><input type="checkbox" checked={showLine} onChange={e => setShowLine(e.target.checked)} /> Ligne IP→Cible</label>
+              <label><input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} /> Labels</label>
+              <label><input type="checkbox" checked={showRef} onChange={e => setShowRef(e.target.checked)} /> Carte labels</label>
+              <label><input type="checkbox" checked={show3D} onChange={e => setShow3D(e.target.checked)} /> Relief 3D</label>
+            </div>
+
+            <div className="blk">
+              <div className="lab">Thème</div>
+              <div className="r4">
+                {(Object.keys(themes) as Theme[]).map(t => (
+                  <button key={t} className={`b th ${t}${theme === t ? ' on' : ''}`} onClick={() => setTheme(t)}>{themeNames[t]}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ro">
+              <div className="rc"><span>Curseur</span><code>{fmtCoord(cur, cf)}</code></div>
+              <div className="rc"><span>Centre</span><code>{fmtCoord({ lat: view.lat, lng: view.lng }, cf)}</code></div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        <div className="sd-card">
-          <span className="tag">Sélection</span>
-          <b className="sname">{selM?.name ?? 'Clic carte'}</b>
-          {selM && <small className="scat">{typeNames[selM.type]} · {sideNames[selM.side]}</small>}
-          <code className="scoord">{fmtCoord(selPt, cf)}</code>
-          {selM && (
-            <div className="sm">
-              <span>Alt {fmtAlt(selM.altM, du)}</span>
-              {selM.spdKt > 0 && <span>{fmtKt(selM.spdKt)}</span>}
-              {selM.hdg > 0 && <span>HDG {fmtHdg(selM.hdg)}</span>}
+      {/* RIGHT PANEL — Situation */}
+      {showRight && (
+        <div className="panel-overlay" onClick={() => setShowRight(false)}>
+          <div className="panel R" onClick={e => e.stopPropagation()}>
+            <div className="panel-bar">
+              <span className="tag">SITAC</span>
+              <button className="close-btn" onClick={() => setShowRight(false)}>✕</button>
             </div>
-          )}
-          {sd !== null && sb !== null && <div className="sm"><span>{fmtDist(sd, du)} centre</span><span>BRG {fmtHdg(sb)} {card(sb)}</span></div>}
-          {selM && <button className="del" onClick={() => del(selM.id)}>✕ Supprimer</button>}
-        </div>
 
-        <div className="ml">
-          {markers.map(m => (
-            <button key={m.id} className={`mc ${m.side}${sel === m.id ? ' act' : ''}`} onClick={() => focus(m)}>
-              <span className="mi" style={{ borderColor: sideColors[m.side], color: sideColors[m.side] }}>{typeIcons[m.type]}</span>
-              <span className="mif"><b>{m.name}</b><small>{typeNames[m.type]} · {fmtAlt(m.altM, du)}{m.spdKt ? ` · ${fmtKt(m.spdKt)}` : ''}</small></span>
-            </button>
-          ))}
-        </div>
-      </div>
+            <div className="r3 counts">
+              {(['friendly','hostile','neutral'] as Side[]).map(s => (
+                <button key={s} className={`b count ${s}${vis[s] ? '' : ' dim'}`} onClick={() => setVis(c => ({ ...c, [s]: !c[s] }))}>
+                  <span className="cn">{counts[s]}</span><span className="cl">{sideNames[s]}</span>
+                </button>
+              ))}
+            </div>
 
-      {/* STATUS BAR */}
+            {cas && (
+              <div className="cas">
+                <span className="tag">CAS (IP→Cible)</span>
+                <div className="cg">
+                  <div><span>Dist</span><b>{fmtDist(cas.d, du)}</b></div>
+                  <div><span>Slant</span><b>{fmtDist(cas.sr, du)}</b></div>
+                  <div><span>Cap</span><b>{fmtHdg(cas.br)} {card(cas.br)}</b></div>
+                  <div><span>Retour</span><b>{fmtHdg(cas.rev)}</b></div>
+                  <div><span>Élev.</span><b>{cas.el > 0 ? '+' : ''}{cas.el.toFixed(1)}°</b></div>
+                  <div><span>Mils</span><b>{cas.mils}</b></div>
+                </div>
+              </div>
+            )}
+
+            <div className="sd-card">
+              <span className="tag">Sélection</span>
+              <b className="sname">{selM?.name ?? '—'}</b>
+              {selM && <small className="scat">{typeNames[selM.type]} · {sideNames[selM.side]}</small>}
+              <code className="scoord">{fmtCoord(selPt, cf)}</code>
+              {selM && (
+                <div className="sm">
+                  <span>{fmtAlt(selM.altM, du)}</span>
+                  {selM.spdKt > 0 && <span>{fmtKt(selM.spdKt)}</span>}
+                </div>
+              )}
+              {sd !== null && sb !== null && <div className="sm"><span>{fmtDist(sd, du)}</span><span>BRG {fmtHdg(sb)}</span></div>}
+              {selM && <button className="del" onClick={() => del(selM.id)}>✕ Supprimer</button>}
+            </div>
+
+            <div className="ml">
+              {markers.map(m => (
+                <button key={m.id} className={`mc ${m.side}${sel === m.id ? ' act' : ''}`} onClick={() => { focus(m); setShowRight(false) }}>
+                  <span className="mi" style={{ borderColor: sideColors[m.side], color: sideColors[m.side] }}>{typeIcons[m.type]}</span>
+                  <span className="mif"><b>{m.name}</b><small>{typeNames[m.type]} · {fmtAlt(m.altM, du)}</small></span>
+                </button>
+              ))}
+            </div>
+
+            <button className="gh" style={{ marginTop: 8 }} onClick={reset}>↺ Reset situation</button>
+          </div>
+        </div>
+      )}
+
+      {/* STATUS BAR — compact */}
       <div className="sbar">
         <span>Z{view.zoom.toFixed(1)}</span>
-        <span>BRG {Math.round(view.bearing)}°</span>
-        <span>Pitch {Math.round(view.pitch)}°</span>
-        <span>Decl {dec > 0 ? '+' : ''}{dec.toFixed(1)}°</span>
-        <span>WGS84</span>
+        <span>{Math.round(view.bearing)}°</span>
+        <span>{dec > 0 ? '+' : ''}{dec.toFixed(1)}°</span>
         <span>{role}</span>
-        {showRings && <span>Rings {ringR.map(r => fmtDist(r, du)).join('/')}</span>}
+        {cas && <span className="sbar-cas">{fmtDist(cas.d, du)}</span>}
       </div>
     </div>
   )
