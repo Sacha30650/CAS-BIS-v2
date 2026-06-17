@@ -131,13 +131,14 @@ export function fromUTM(zoneNum: number, easting: number, northing: number): Lat
   const lon0 = rad((zoneNum - 1) * 6 - 180 + 3)
   const x = easting - 500000
   const y = n
-  const e1 = Math.sqrt(E2)
+  const e1 = (1 - Math.sqrt(1 - E2)) / (1 + Math.sqrt(1 - E2))
   const eP2 = E2 / (1 - E2)
   const M = y / K0
   const mu = M / (A * (1 - E2/4 - 3*E2*E2/64 - 5*E2*E2*E2/256))
   const phi1 = mu + (3*e1/2 - 27*e1**3/32) * Math.sin(2*mu)
     + (21*e1*e1/16 - 55*e1**4/32) * Math.sin(4*mu)
     + (151*e1**3/96) * Math.sin(6*mu)
+    + (1097*e1**4/512) * Math.sin(8*mu)
   const N1 = A / Math.sqrt(1 - E2 * Math.sin(phi1)**2)
   const T1 = Math.tan(phi1)**2
   const C1 = eP2 * Math.cos(phi1)**2
