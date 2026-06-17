@@ -168,49 +168,65 @@ export function mgrsGridFC(
   if (mode === 'off') return { type: 'FeatureCollection' as const, features: [] as object[] }
 
   const spacing = mgrsGridSpacing(zoom)
-  const sw = toUTM({ lat: b.getSouth(), lng: b.getWest() })
-  const ne = toUTM({ lat: b.getNorth(), lng: b.getEast() })
-  const zoneNum = parseInt(sw.zone)
+  const wLat = b.getSouth(), nLat = b.getNorth()
+  const wLng = b.getWest(), eLng = b.getEast()
 
-  // Align to spacing
-  const eStart = Math.floor(sw.e / spacing) * spacing
-  const eEnd = Math.ceil(ne.e / spacing) * spacing
-  const nStart = Math.floor(sw.n / spacing) * spacing
-  const nEnd = Math.ceil(ne.n / spacing) * spacing
+  // Determine all UTM zones in view
+  const zStart = Math.floor((wLng + 180) / 6) + 1
+  const zEnd = Math.floor((eLng + 180) / 6) + 1
 
   const features: object[] = []
   const labelFeatures: object[] = []
 
-  // Vertical lines (easting) — full height of visible bounds
-  for (let e = eStart; e <= eEnd; e += spacing) {
-    const top = fromUTM(zoneNum, e, nEnd)
-    const bot = fromUTM(zoneNum, e, nStart)
-    features.push({
-      type: 'Feature', properties: { axis: 'v' },
-      geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
-    })
-    const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
-    const labelPt = fromUTM(zoneNum, e, nEnd - spacing * 0.3)
-    labelFeatures.push({
-      type: 'Feature', properties: { label: labelNum, axis: 'v' },
-      geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
-    })
-  }
+  for (let zoneNum = zStart; zoneNum <= zEnd; zoneNum++) {
+    const zoneW = (zoneNum - 1) * 6 - 180
+    const zoneE = zoneNum * 6 - 180
+    // Clip to visible bounds
+    const zLeft = Math.max(wLng, zoneW)
+    const zRight = Math.min(eLng, zoneE)
+    if (zLeft >= zRight) continue
 
-  // Horizontal lines (northing) — full width of visible bounds
-  for (let nn = nStart; nn <= nEnd; nn += spacing) {
-    const left = fromUTM(zoneNum, eStart, nn)
-    const right = fromUTM(zoneNum, eEnd, nn)
-    features.push({
-      type: 'Feature', properties: { axis: 'h' },
-      geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
-    })
-    const labelNum = String(Math.floor((nn % 100000) / 1000)).padStart(2, '0')
-    const labelPt = fromUTM(zoneNum, eStart + spacing * 0.3, nn)
-    labelFeatures.push({
-      type: 'Feature', properties: { label: labelNum, axis: 'h' },
-      geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
-    })
+    const swUTM = toUTM({ lat: wLat, lng: zLeft })
+    const seUTM = toUTM({ lat: wLat, lng: zRight })
+    const nwUTM = toUTM({ lat: nLat, lng: zLeft })
+    const neUTM = toUTM({ lat: nLat, lng: zRight })
+
+    const eStart = Math.floor(Math.min(swUTM.e, nwUTM.e) / spacing) * spacing
+    const eEnd = Math.ceil(Math.max(seUTM.e, neUTM.e) / spacing) * spacing
+    const nStart = Math.floor(Math.min(swUTM.n, seUTM.n) / spacing) * spacing
+    const nEnd = Math.ceil(Math.max(nwUTM.n, neUTM.n) / spacing) * spacing
+
+    // Vertical lines (easting) — top to bottom
+    for (let e = eStart; e <= eEnd; e += spacing) {
+      const top = fromUTM(zoneNum, e, nEnd)
+      const bot = fromUTM(zoneNum, e, nStart)
+      features.push({
+        type: 'Feature', properties: { axis: 'v' },
+        geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
+      })
+      const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
+      const labelPt = fromUTM(zoneNum, e, nEnd - spacing * 0.5)
+      labelFeatures.push({
+        type: 'Feature', properties: { label: labelNum, axis: 'v' },
+        geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+      })
+    }
+
+    // Horizontal lines (northing) — left to right
+    for (let nn = nStart; nn <= nEnd; nn += spacing) {
+      const left = fromUTM(zoneNum, eStart, nn)
+      const right = fromUTM(zoneNum, eEnd, nn)
+      features.push({
+        type: 'Feature', properties: { axis: 'h' },
+        geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
+      })
+      const labelNum = String(Math.floor((nn % 100000) / 1000)).padStart(2, '0')
+      const labelPt = fromUTM(zoneNum, eStart + spacing * 0.5, nn)
+      labelFeatures.push({
+        type: 'Feature', properties: { label: labelNum, axis: 'h' },
+        geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+      })
+    }
   }
 
   return { type: 'FeatureCollection' as const, features: [...features, ...labelFeatures] }
