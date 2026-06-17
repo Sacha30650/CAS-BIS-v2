@@ -180,15 +180,14 @@ export function mgrsGridFC(
   const features: object[] = []
   const labelFeatures: object[] = []
 
-  // Vertical lines (easting)
+  // Vertical lines (easting) — full height of visible bounds
   for (let e = eStart; e <= eEnd; e += spacing) {
-    const top = fromUTM(zoneNum, e, Math.min(nEnd, nStart + 100000))
-    const bot = fromUTM(zoneNum, e, Math.max(nStart, nEnd - 100000))
+    const top = fromUTM(zoneNum, e, nEnd)
+    const bot = fromUTM(zoneNum, e, nStart)
     features.push({
       type: 'Feature', properties: { axis: 'v' },
       geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
     })
-    // Label = last 2 digits of the km value (e.g. 45000 → "45")
     const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
     const labelPt = fromUTM(zoneNum, e, nEnd - spacing * 0.3)
     labelFeatures.push({
@@ -197,10 +196,10 @@ export function mgrsGridFC(
     })
   }
 
-  // Horizontal lines (northing)
+  // Horizontal lines (northing) — full width of visible bounds
   for (let nn = nStart; nn <= nEnd; nn += spacing) {
-    const left = fromUTM(zoneNum, Math.max(eStart, eEnd - 100000), nn)
-    const right = fromUTM(zoneNum, Math.min(eEnd, eStart + 100000), nn)
+    const left = fromUTM(zoneNum, eStart, nn)
+    const right = fromUTM(zoneNum, eEnd, nn)
     features.push({
       type: 'Feature', properties: { axis: 'h' },
       geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
