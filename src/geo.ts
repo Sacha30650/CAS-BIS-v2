@@ -171,7 +171,6 @@ export function mgrsGridFC(
   const wLat = b.getSouth(), nLat = b.getNorth()
   const wLng = b.getWest(), eLng = b.getEast()
 
-  // Determine all UTM zones in view
   const zStart = Math.floor((wLng + 180) / 6) + 1
   const zEnd = Math.floor((eLng + 180) / 6) + 1
 
@@ -181,7 +180,6 @@ export function mgrsGridFC(
   for (let zoneNum = zStart; zoneNum <= zEnd; zoneNum++) {
     const zoneW = (zoneNum - 1) * 6 - 180
     const zoneE = zoneNum * 6 - 180
-    // Clip to visible bounds
     const zLeft = Math.max(wLng, zoneW)
     const zRight = Math.min(eLng, zoneE)
     if (zLeft >= zRight) continue
@@ -196,7 +194,7 @@ export function mgrsGridFC(
     const nStart = Math.floor(Math.min(swUTM.n, seUTM.n) / spacing) * spacing
     const nEnd = Math.ceil(Math.max(nwUTM.n, neUTM.n) / spacing) * spacing
 
-    // Vertical lines (easting) — top to bottom
+    // Vertical lines (easting) with labels at TOP
     for (let e = eStart; e <= eEnd; e += spacing) {
       const top = fromUTM(zoneNum, e, nEnd)
       const bot = fromUTM(zoneNum, e, nStart)
@@ -204,15 +202,15 @@ export function mgrsGridFC(
         type: 'Feature', properties: { axis: 'v' },
         geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
       })
+      // Label at top of line
       const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
-      const labelPt = fromUTM(zoneNum, e, nEnd - spacing * 0.5)
       labelFeatures.push({
         type: 'Feature', properties: { label: labelNum, axis: 'v' },
-        geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+        geometry: { type: 'Point', coordinates: [top.lng, top.lat] },
       })
     }
 
-    // Horizontal lines (northing) — left to right
+    // Horizontal lines (northing) with labels at LEFT
     for (let nn = nStart; nn <= nEnd; nn += spacing) {
       const left = fromUTM(zoneNum, eStart, nn)
       const right = fromUTM(zoneNum, eEnd, nn)
@@ -220,11 +218,11 @@ export function mgrsGridFC(
         type: 'Feature', properties: { axis: 'h' },
         geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
       })
+      // Label at left of line
       const labelNum = String(Math.floor((nn % 100000) / 1000)).padStart(2, '0')
-      const labelPt = fromUTM(zoneNum, eStart + spacing * 0.5, nn)
       labelFeatures.push({
         type: 'Feature', properties: { label: labelNum, axis: 'h' },
-        geometry: { type: 'Point', coordinates: [labelPt.lng, labelPt.lat] },
+        geometry: { type: 'Point', coordinates: [left.lng, left.lat] },
       })
     }
   }

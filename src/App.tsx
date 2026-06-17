@@ -52,6 +52,7 @@ function App() {
   const [showLeft, setShowLeft] = useState(false)
   const [showRight, setShowRight] = useState(false)
   const [hudMin, setHudMin] = useState(true)
+  const [gridTick, setGridTick] = useState(0)
 
   // Derived
   const selM = useMemo(() => markers.find(m => m.id === sel) ?? null, [sel, markers])
@@ -119,16 +120,17 @@ function App() {
         filter: ['==', '$type', 'Point'],
         layout: {
           'text-field': ['get', 'label'],
-          'text-size': 11,
+          'text-size': 12,
           'text-font': ['Noto Sans Bold'],
           'text-anchor': 'center',
-          'text-offset': ['case', ['==', ['get', 'axis'], 'v'], ['literal', [0, 0]], ['literal', [-1.2, 0]]],
+          'text-offset': ['case', ['==', ['get', 'axis'], 'v'], ['literal', [0, -0.6]], ['literal', [0.8, 0]]],
           'text-allow-overlap': true,
+          'symbol-placement': 'point',
         },
         paint: {
-          'text-color': 'rgba(143,255,172,0.85)',
-          'text-halo-color': 'rgba(0,0,0,0.8)',
-          'text-halo-width': 2,
+          'text-color': 'rgba(143,255,172,0.9)',
+          'text-halo-color': 'rgba(0,0,0,0.85)',
+          'text-halo-width': 2.5,
         },
       })
       m.addSource('rings', { type: 'geojson', data: emptyFC })
@@ -141,6 +143,8 @@ function App() {
 
     m.on('mousemove', e => setCur({ lat: e.lngLat.lat, lng: e.lngLat.lng }))
     m.on('move', sync)
+    m.on('moveend', () => { sync(); setGridTick(t => t + 1) })
+    m.on('zoomend', () => { sync(); setGridTick(t => t + 1) })
     m.on('click', e => {
       const pt = { lat: e.lngLat.lat, lng: e.lngLat.lng }
       setClick(pt)
@@ -196,7 +200,7 @@ function App() {
     mkElRef.current.forEach((el, id) => el.classList.toggle('on', id === sel))
   }, [sel])
 
-  // Grid
+  // Grid — regenerated only on moveend/zoomend for smoothness
   useEffect(() => {
     const m = mapRef.current; if (!m || !ready) return
     const src = m.getSource('grid') as GeoJSONSource | undefined; if (!src) return
@@ -204,7 +208,7 @@ function App() {
     const vis = grid === 'off' ? 'none' : 'visible'
     m.setLayoutProperty('grid', 'visibility', vis)
     m.setLayoutProperty('grid-labels', 'visibility', vis)
-  }, [grid, ready, view.lat, view.lng, view.zoom])
+  }, [grid, ready, gridTick])
 
   // Rings
   useEffect(() => {
