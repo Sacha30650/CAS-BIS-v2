@@ -1,0 +1,25 @@
+{
+  "name": "cas-bis-v2",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CAS BIS — Close Air Support tactical navigation. Satellite map, SITAC, MGRS/UTM/DMS, grid lines, CAS tools. Training/simulation only.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.0",
+    "mgrs": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}
