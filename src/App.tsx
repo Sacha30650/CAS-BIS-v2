@@ -9,6 +9,7 @@ import {
   bearing, card, decl, fmtAlt, fmtCoord, fmtDist, fmtHdg, fmtKt,
   gridFC, havM, lineFC, ringsFC, revBrg, slant, toMils,
 } from './geo'
+import { themes, themeNames, type Theme } from './themes'
 import type { CoordFormat, DistUnit, GridMode, LatLng, MarkerType, Role, Side, TMarker, ViewState } from './types'
 
 const emptyFC = { type: 'FeatureCollection' as const, features: [] }
@@ -18,6 +19,7 @@ function App() {
   const mapRef = useRef<maplibregl.Map | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const mkRef = useRef<maplibregl.Marker[]>([])
+  const mkElRef = useRef<Map<string, HTMLButtonElement>>(new Map())
   const pActive = useRef(false)
   const pSide = useRef<Side>('friendly')
   const pType = useRef<MarkerType>('infantry')
@@ -44,6 +46,7 @@ function App() {
   const [showLine, setShowLine] = useState(true)
   const [role, setRole] = useState<Role>('JTAC')
   const [vis, setVis] = useState<Record<Side, boolean>>({ friendly: true, hostile: true, neutral: true })
+  const [theme, setTheme] = useState<Theme>('day')
 
   // Derived
   const selM = useMemo(() => markers.find(m => m.id === sel) ?? null, [sel, markers])
@@ -70,6 +73,12 @@ function App() {
     const el = d > 0 ? (Math.atan2(ad, d) * 180) / Math.PI : 0
     return { d, br, sr, el, rev: revBrg(br), mils: toMils(br) }
   }, [ip, tgt])
+
+  // Theme application
+  useEffect(() => {
+    const root = document.documentElement
+    Object.entries(themes[theme]).forEach(([k, v]) => root.style.setProperty(k, v))
+  }, [theme])
 
   // Sync refs
   useEffect(() => { pActive.current = placing }, [placing])
@@ -138,23 +147,32 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // DOM markers
+  // DOM markers — rebuild only when the marker set or visibility changes
   useEffect(() => {
     const m = mapRef.current
     if (!m || !ready) return
     mkRef.current.forEach(x => x.remove())
     mkRef.current = []
+    mkElRef.current.clear()
     markers.filter(x => vis[x.side]).forEach(x => {
       const col = sideColors[x.side]
       const el = document.createElement('button')
       el.type = 'button'
       el.className = `mk ${x.side}${sel === x.id ? ' on' : ''}${showLabels ? '' : ' nl'}`
-      el.innerHTML = `<span class="ms" style="border-color:${col};color:${col}">${typeIcons[x.type]}</span><span class="ml">${x.name}</span>`
+      el.innerHTML = `<span class="ms" style="border-color:${col};color:${col}">${typeIcons[x.type]}</span><span class="mk-lbl">${x.name}</span>`
       el.title = `${sideNames[x.side]} · ${x.name}`
+      el.setAttribute('aria-label', `${sideNames[x.side]} ${x.name} ${typeNames[x.type]}`)
       el.addEventListener('click', ev => { ev.stopPropagation(); setSel(x.id); setClick({ lat: x.lat, lng: x.lng }) })
+      mkElRef.current.set(x.id, el)
       mkRef.current.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([x.lng, x.lat]).addTo(m))
     })
-  }, [ready, sel, showLabels, markers, vis])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, markers, vis, showLabels])
+
+  // Selection highlight — toggle class only, no rebuild
+  useEffect(() => {
+    mkElRef.current.forEach((el, id) => el.classList.toggle('on', id === sel))
+  }, [sel])
 
   // Grid
   useEffect(() => {
@@ -216,11 +234,11 @@ function App() {
   const types = Object.entries(typeNames)
 
   return (
-    <div className="app">
+    <div className={`app${placing ? ' placing' : ''}`}>
       <div className="mapwrap">
         <div ref={divRef} className="map" />
         <div className="reticle" />
-        {placing && <div className="banner">● Placement {sideNames[cSide]} — {typeNames[cType]} — Clic pour poser</div>}
+        {placing && <div className="banner" role="status" aria-live="polite">● Placement {sideNames[cSide]} — {typeNames[cType]} — Clic pour poser</div>}
       </div>
 
       {/* LEFT */}
@@ -232,13 +250,13 @@ function App() {
           <div className="lab">Ajouter un marqueur</div>
           <div className="r3">
             {(['friendly','hostile','neutral'] as Side[]).map(s => (
-              <button key={s} className={`b ${cSide === s ? 'a ' + s : ''}`} onClick={() => setCSide(s)}>{sideNames[s]}</button>
+              <button key={s} aria-pressed={cSide === s} className={`b ${cSide === s ? 'a ' + s : ''}`} onClick={() => setCSide(s)}>{sideNames[s]}</button>
             ))}
           </div>
-          <select className="dd" value={cType} onChange={e => setCType(e.target.value as MarkerType)}>
+          <select className="dd" value={cType} onChange={e => setCType(e.target.value as MarkerType)} aria-label="Type de marqueur">
             {types.map(([k,v]) => <option key={k} value={k}>{typeIcons[k]} {v}</option>)}
           </select>
-          <button className="go" onClick={() => setPlacing(v => !v)}>{placing ? '✕ Annuler' : '+ Placer'}</button>
+          <button className="go" aria-pressed={placing} onClick={() => setPlacing(v => !v)}>{placing ? '✕ Annuler' : '+ Placer'}</button>
         </div>
 
         <div className="blk g2">
@@ -272,7 +290,16 @@ function App() {
           <label><input type="checkbox" checked={show3D} onChange={e => setShow3D(e.target.checked)} /> Relief 3D</label>
         </div>
 
-        <div className="ro"><div className="rc"><span>Curseur</span><code>{fmtCoord(cur, cf)}</code></div>
+        <div className="blk theme-row">
+          <div className="lab">Thème affichage</div>
+          <div className="r4">
+            {(Object.keys(themes) as Theme[]).map(t => (
+              <button key={t} className={`b th ${t}${theme === t ? ' on' : ''}`} onClick={() => setTheme(t)}>{themeNames[t]}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="ro"><div className="rc"><span>Curseur</span><code aria-live="polite">{fmtCoord(cur, cf)}</code></div>
         <div className="rc"><span>Centre carte</span><code>{fmtCoord({ lat: view.lat, lng: view.lng }, cf)}</code></div></div>
       </div>
 
