@@ -6,4 +6,5 @@ export default defineConfig({
   build: {
     target: 'es2021',
   },
+  base: '/CAS-BIS-v2/',
 })
