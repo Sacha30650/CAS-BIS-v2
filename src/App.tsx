@@ -13,6 +13,17 @@ import { themes, themeNames, type Theme } from './themes'
 import type { CoordFormat, DistUnit, GridMode, LatLng, MarkerType, Role, Side, TMarker, ViewState } from './types'
 
 const emptyFC = { type: 'FeatureCollection' as const, features: [] }
+const FT_PER_M = 3.28084
+
+function altToInput(altM: number, unit: DistUnit): string {
+  return unit === 'feet' ? String(Math.round(altM * FT_PER_M)) : String(Math.round(altM))
+}
+
+function altInputToMeters(raw: string, unit: DistUnit): number | null {
+  const value = Number(raw.trim().replace(',', '.'))
+  if (!Number.isFinite(value)) return null
+  return unit === 'feet' ? value / FT_PER_M : value
+}
 
 function App() {
   // Refs
@@ -41,6 +52,7 @@ function App() {
   const [placing, setPlacing] = useState(false)
   const [cf, setCF] = useState<CoordFormat>('mgrs')
   const [du, setDU] = useState<DistUnit>('meters')
+  const [altUnit, setAltUnit] = useState<DistUnit>('meters')
   const [grid, setGrid] = useState<GridMode>('auto')
   const [showRings, setShowRings] = useState(false)
   const [showLabels, setShowLabels] = useState(false)
@@ -60,6 +72,7 @@ function App() {
   const [gotoMsg, setGotoMsg] = useState('')
   const [editType, setEditType] = useState<MarkerType>(demoMarkers[0].type)
   const [editMgrs, setEditMgrs] = useState('')
+  const [editAlt, setEditAlt] = useState(altToInput(demoMarkers[0].altM, 'meters'))
   const [editMsg, setEditMsg] = useState('')
 
   // Derived
@@ -110,13 +123,15 @@ function App() {
   useEffect(() => {
     if (!selM) {
       setEditMgrs('')
+      setEditAlt('')
       setEditMsg('')
       return
     }
     setEditType(selM.type)
     setEditMgrs(fmtCoord({ lat: selM.lat, lng: selM.lng }, 'mgrs'))
+    setEditAlt(altToInput(selM.altM, altUnit))
     setEditMsg('')
-  }, [selM?.id, selM?.lat, selM?.lng, selM?.type])
+  }, [altUnit, selM?.altM, selM?.id, selM?.lat, selM?.lng, selM?.type])
 
   // Init map (once)
   useEffect(() => {
@@ -375,9 +390,14 @@ function App() {
       setEditMsg('Coordonnée MGRS invalide. Exemple : 31T FJ 13181 46215')
       return
     }
-    setMarkers(c => c.map(m => m.id === selM.id ? { ...m, type: editType, lat: pt.lat, lng: pt.lng, ts: new Date().toISOString() } : m))
+    const altM = altInputToMeters(editAlt, altUnit)
+    if (altM === null) {
+      setEditMsg(`Altitude AMSL invalide. Exemple : ${altUnit === 'feet' ? '492' : '150'}`)
+      return
+    }
+    setMarkers(c => c.map(m => m.id === selM.id ? { ...m, type: editType, lat: pt.lat, lng: pt.lng, altM: Math.round(altM), ts: new Date().toISOString() } : m))
     setClick(pt)
-    setEditMsg('Unité mise à jour')
+    setEditMsg('Unité mise à jour avec altitude AMSL')
     flyToPoint(pt, 15)
   }
   const fitMission = () => {
@@ -504,9 +524,14 @@ function App() {
                   {coordOpts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               </label>
-              <label className="field">Unités
+              <label className="field">Distances
                 <select className="dd" value={du} onChange={e => setDU(e.target.value as DistUnit)}>
                   <option value="meters">Mètres</option><option value="feet">Pieds</option>
+                </select>
+              </label>
+              <label className="field">Altitude AMSL
+                <select className="dd" value={altUnit} onChange={e => setAltUnit(e.target.value as DistUnit)}>
+                  <option value="meters">m AMSL</option><option value="feet">ft AMSL</option>
                 </select>
               </label>
               <label className="field">Grille
@@ -583,11 +608,11 @@ function App() {
             <div className="selection-detail">
               <span className="tag">Sélection active</span>
               <b>{selM?.name ?? 'Aucune unité sélectionnée'}</b>
-              {selM && <small>{typeNames[selM.type]} · {sideNames[selM.side]} · {fmtAlt(selM.altM, du)}</small>}
+              {selM && <small>{typeNames[selM.type]} · {sideNames[selM.side]} · {fmtAlt(selM.altM, altUnit)}</small>}
               <code>{fmtCoord(selPt, cf)}</code>
               {selM && (
                 <div className="meta-row">
-                  <span>{fmtAlt(selM.altM, du)}</span>
+                  <span>{fmtAlt(selM.altM, altUnit)}</span>
                   {selM.spdKt > 0 && <span>{fmtKt(selM.spdKt)}</span>}
                   {selM.hdg > 0 && <span>HDG {fmtHdg(selM.hdg)}</span>}
                 </div>
@@ -611,11 +636,28 @@ function App() {
                       spellCheck={false}
                     />
                   </label>
+                  <div className="alt-edit-row">
+                    <label className="field">Altitude AMSL
+                      <input
+                        className="txt-input mono"
+                        type="number"
+                        inputMode="decimal"
+                        value={editAlt}
+                        onChange={e => { setEditAlt(e.target.value); setEditMsg('') }}
+                        placeholder={altUnit === 'feet' ? '492' : '150'}
+                      />
+                    </label>
+                    <label className="field">Unité
+                      <select className="dd" value={altUnit} onChange={e => setAltUnit(e.target.value as DistUnit)}>
+                        <option value="meters">m AMSL</option><option value="feet">ft AMSL</option>
+                      </select>
+                    </label>
+                  </div>
                   <div className="inline-actions">
                     <button type="submit" className="go">Appliquer</button>
-                    <button type="button" className="soft-btn" onClick={() => setEditMgrs(fmtCoord({ lat: selM.lat, lng: selM.lng }, 'mgrs'))}>Recharger</button>
+                    <button type="button" className="soft-btn" onClick={() => { setEditMgrs(fmtCoord({ lat: selM.lat, lng: selM.lng }, 'mgrs')); setEditAlt(altToInput(selM.altM, altUnit)) }}>Recharger</button>
                   </div>
-                  {editMsg && <p className={`form-msg ${editMsg.startsWith('Coordonnée') ? 'err' : 'ok'}`}>{editMsg}</p>}
+                  {editMsg && <p className={`form-msg ${editMsg.startsWith('Unité') ? 'ok' : 'err'}`}>{editMsg}</p>}
                 </form>
               )}
 
@@ -629,7 +671,7 @@ function App() {
               {markers.map(m => (
                 <button key={m.id} type="button" className={`marker-card ${m.side}${sel === m.id ? ' active' : ''}${vis[m.side] ? '' : ' hidden-side'}`} onClick={() => { focus(m); setShowRight(false) }}>
                   <span className="marker-token" style={{ borderColor: sideColors[m.side], color: sideColors[m.side] }}>{typeIcons[m.type]}</span>
-                  <span className="marker-copy"><b>{m.name}</b><small>{typeNames[m.type]} · {fmtAlt(m.altM, du)}</small></span>
+                  <span className="marker-copy"><b>{m.name}</b><small>{typeNames[m.type]} · {fmtAlt(m.altM, altUnit)}</small></span>
                   <span className="marker-side">{sideNames[m.side]}</span>
                 </button>
               ))}

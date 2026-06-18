@@ -88,7 +88,7 @@ export function fmtDist(m: number, u: DistUnit): string {
   return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`
 }
 export function fmtAlt(m: number, u: DistUnit): string {
-  return u === 'feet' ? `${Math.round(m * 3.28084).toLocaleString('en-US')} ft` : `${Math.round(m)} m`
+  return u === 'feet' ? `${Math.round(m * 3.28084).toLocaleString('en-US')} ft AMSL` : `${Math.round(m)} m AMSL`
 }
 export function fmtKt(k: number): string { return `${Math.round(k)} kt` }
 export function fmtHdg(d: number): string { return `${Math.round(d).toString().padStart(3, '0')}°` }
