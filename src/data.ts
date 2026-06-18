@@ -21,7 +21,7 @@ export const sideColors = {
 
 export const sideNames = {
   friendly: 'Ami',
-  hostile: 'Ennemi',
+  hostile: 'Hostile',
   neutral: 'Neutre',
 } as const
 
@@ -32,14 +32,14 @@ export const sideShort = {
 } as const
 
 export const typeIcons: Record<string, string> = {
-  infantry: '⚔',
-  vehicle: '⚙',
-  aircraft: '✈',
-  objective: '◎',
-  checkpoint: '⬡',
-  target: '⨯',
-  ip: '▲',
-  danger: '⚠',
+  infantry: 'INF',
+  vehicle: 'VHC',
+  aircraft: 'AIR',
+  objective: 'OBJ',
+  checkpoint: 'CP',
+  target: 'TGT',
+  ip: 'IP',
+  danger: 'DNG',
 }
 
 export const typeNames: Record<string, string> = {
