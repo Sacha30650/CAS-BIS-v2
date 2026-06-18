@@ -70,6 +70,18 @@ export function fmtCoord(p: LatLng | null, f: CoordFormat): string {
   }
 }
 
+export function parseMgrsCoord(input: string): LatLng | null {
+  const clean = input.trim().toUpperCase().replace(/[^0-9A-Z]/g, '')
+  if (clean.length < 5) return null
+  try {
+    const [lng, lat] = mgrs.toPoint(clean)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    return clampLL({ lat, lng })
+  } catch {
+    return null
+  }
+}
+
 // --- Dist/alt/speed ---
 export function fmtDist(m: number, u: DistUnit): string {
   if (u === 'feet') return `${Math.round(m * 3.28084).toLocaleString('en-US')} ft`

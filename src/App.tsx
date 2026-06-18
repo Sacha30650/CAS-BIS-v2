@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
@@ -7,7 +7,7 @@ import { demoMarkers, sideColors, sideNames, sideShort, typeIcons, typeNames } f
 import { mapStyle } from './mapStyle'
 import {
   bearing, card, decl, fmtAlt, fmtCoord, fmtDist, fmtHdg, fmtKt,
-  mgrsGridFC, havM, lineFC, ringsFC, revBrg, slant, toMils,
+  mgrsGridFC, havM, lineFC, parseMgrsCoord, ringsFC, revBrg, slant, toMils,
 } from './geo'
 import { themes, themeNames, type Theme } from './themes'
 import type { CoordFormat, DistUnit, GridMode, LatLng, MarkerType, Role, Side, TMarker, ViewState } from './types'
@@ -56,6 +56,11 @@ function App() {
   const [showRight, setShowRight] = useState(false)
   const [hudMin, setHudMin] = useState(false)
   const [gridTick, setGridTick] = useState(0)
+  const [gotoMgrs, setGotoMgrs] = useState('')
+  const [gotoMsg, setGotoMsg] = useState('')
+  const [editType, setEditType] = useState<MarkerType>(demoMarkers[0].type)
+  const [editMgrs, setEditMgrs] = useState('')
+  const [editMsg, setEditMsg] = useState('')
 
   // Derived
   const selM = useMemo(() => markers.find(m => m.id === sel) ?? null, [sel, markers])
@@ -101,6 +106,17 @@ function App() {
   useEffect(() => { pActive.current = placing }, [placing])
   useEffect(() => { pSide.current = cSide }, [cSide])
   useEffect(() => { pType.current = cType }, [cType])
+
+  useEffect(() => {
+    if (!selM) {
+      setEditMgrs('')
+      setEditMsg('')
+      return
+    }
+    setEditType(selM.type)
+    setEditMgrs(fmtCoord({ lat: selM.lat, lng: selM.lng }, 'mgrs'))
+    setEditMsg('')
+  }, [selM?.id, selM?.lat, selM?.lng, selM?.type])
 
   // Init map (once)
   useEffect(() => {
@@ -248,7 +264,14 @@ function App() {
 
       el.appendChild(badge)
       el.appendChild(label)
-      el.addEventListener('click', ev => { ev.stopPropagation(); setSel(x.id); setClick({ lat: x.lat, lng: x.lng }) })
+      el.addEventListener('click', ev => {
+        ev.stopPropagation()
+        setSel(x.id)
+        setClick({ lat: x.lat, lng: x.lng })
+        setPlacing(false)
+        setShowLeft(false)
+        setShowRight(true)
+      })
       mkElRef.current.set(x.id, el)
       mkRef.current.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([x.lng, x.lat]).addTo(m))
     })
@@ -264,7 +287,7 @@ function App() {
   useEffect(() => {
     const m = mapRef.current; if (!m || !ready) return
     const src = m.getSource('grid') as GeoJSONSource | undefined; if (!src) return
-    src.setData(mgrsGridFC(m.getBounds(), m.getZoom(), grid))
+    src.setData(mgrsGridFC(m.getBounds(), m.getZoom(), grid) as Parameters<GeoJSONSource['setData']>[0])
     const layerVisibility = grid === 'off' ? 'none' : 'visible'
     m.setLayoutProperty('grid', 'visibility', layerVisibility)
     m.setLayoutProperty('grid-labels', 'visibility', layerVisibility)
@@ -303,10 +326,16 @@ function App() {
   }, [ready, show3D])
 
   // Actions
+  const flyToPoint = (pt: LatLng, zoom = 14.5) => {
+    const m = mapRef.current
+    if (!m) return
+    m.flyTo({ center: [pt.lng, pt.lat], zoom: Math.max(m.getZoom(), zoom), speed: 0.8 })
+  }
   const focus = (x: TMarker) => {
+    const pt = { lat: x.lat, lng: x.lng }
     setSel(x.id)
-    setClick({ lat: x.lat, lng: x.lng })
-    mapRef.current?.flyTo({ center: [x.lng, x.lat], zoom: Math.max(mapRef.current.getZoom(), 14), speed: 0.8 })
+    setClick(pt)
+    flyToPoint(pt, 14)
   }
   const del = (id: string) => {
     setMarkers(c => {
@@ -315,13 +344,41 @@ function App() {
       return next
     })
   }
-  const reset = () => { setMarkers(demoMarkers); setSel(demoMarkers[0].id); setClick(null) }
+  const reset = () => { setMarkers(demoMarkers); setSel(demoMarkers[0].id); setClick(null); setGotoMsg(''); setEditMsg('') }
   const toggleLeft = () => { setShowLeft(v => !v); setShowRight(false) }
   const toggleRight = () => { setShowRight(v => !v); setShowLeft(false) }
   const togglePlace = () => { setPlacing(v => !v); setShowLeft(false); setShowRight(false) }
   const centerSelected = () => {
     if (!selPt) return
-    mapRef.current?.flyTo({ center: [selPt.lng, selPt.lat], zoom: Math.max(mapRef.current.getZoom(), 14), speed: 0.75 })
+    flyToPoint(selPt, 14)
+  }
+  const goToMgrs = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const pt = parseMgrsCoord(gotoMgrs)
+    if (!pt) {
+      setGotoMsg('Coordonnée MGRS invalide. Exemple : 31T FJ 13181 46215')
+      return
+    }
+    setGotoMsg('GO TO validé')
+    setSel('')
+    setClick(pt)
+    setPlacing(false)
+    setShowLeft(false)
+    setShowRight(false)
+    flyToPoint(pt, 15.5)
+  }
+  const applySelectedEdit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!selM) return
+    const pt = parseMgrsCoord(editMgrs)
+    if (!pt) {
+      setEditMsg('Coordonnée MGRS invalide. Exemple : 31T FJ 13181 46215')
+      return
+    }
+    setMarkers(c => c.map(m => m.id === selM.id ? { ...m, type: editType, lat: pt.lat, lng: pt.lng, ts: new Date().toISOString() } : m))
+    setClick(pt)
+    setEditMsg('Unité mise à jour')
+    flyToPoint(pt, 15)
   }
   const fitMission = () => {
     const m = mapRef.current
@@ -390,14 +447,35 @@ function App() {
 
       {showLeft && (
         <div className="panel-overlay" onClick={() => setShowLeft(false)}>
-          <aside className="panel L" aria-label="Outils de carte" onClick={e => e.stopPropagation()}>
+          <aside className="panel L" aria-label="Navigation et outils de carte" onClick={e => e.stopPropagation()}>
             <div className="panel-bar">
               <div>
-                <span className="tag">Outils</span>
-                <h2>Préparer la carte</h2>
+                <span className="tag">NAV</span>
+                <h2>Navigation</h2>
               </div>
               <button type="button" className="close-btn" onClick={() => setShowLeft(false)} aria-label="Fermer les outils">×</button>
             </div>
+
+            <form className="action-card goto-card" onSubmit={goToMgrs}>
+              <span className="tag">GO TO MGRS</span>
+              <h3>Rejoindre une coordonnée</h3>
+              <p>Entrez une coordonnée MGRS complète, puis la carte se recentre dessus.</p>
+              <label className="field">Coordonnée MGRS
+                <input
+                  className="txt-input mono"
+                  value={gotoMgrs}
+                  onChange={e => { setGotoMgrs(e.target.value); setGotoMsg('') }}
+                  placeholder="31T FJ 13181 46215"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                />
+              </label>
+              <div className="inline-actions">
+                <button type="submit" className="go">GO TO</button>
+                <button type="button" className="soft-btn" onClick={() => setGotoMgrs(fmtCoord({ lat: view.lat, lng: view.lng }, 'mgrs'))}>Centre</button>
+              </div>
+              {gotoMsg && <p className={`form-msg ${gotoMsg.startsWith('Coordonnée') ? 'err' : 'ok'}`}>{gotoMsg}</p>}
+            </form>
 
             <div className="action-card primary-card">
               <span className="tag">Insertion</span>
@@ -504,7 +582,7 @@ function App() {
 
             <div className="selection-detail">
               <span className="tag">Sélection active</span>
-              <b>{selM?.name ?? 'Aucune sélection'}</b>
+              <b>{selM?.name ?? 'Aucune unité sélectionnée'}</b>
               {selM && <small>{typeNames[selM.type]} · {sideNames[selM.side]} · {fmtAlt(selM.altM, du)}</small>}
               <code>{fmtCoord(selPt, cf)}</code>
               {selM && (
@@ -515,6 +593,32 @@ function App() {
                 </div>
               )}
               {sd !== null && sb !== null && <div className="meta-row"><span>{fmtDist(sd, du)}</span><span>BRG {fmtHdg(sb)}</span></div>}
+
+              {selM && (
+                <form className="unit-edit" onSubmit={applySelectedEdit}>
+                  <label className="field">Nature de l'unité
+                    <select className="dd" value={editType} onChange={e => { setEditType(e.target.value as MarkerType); setEditMsg('') }}>
+                      {types.map(([k,v]) => <option key={k} value={k}>{typeIcons[k]} · {v}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">Coordonnée MGRS
+                    <input
+                      className="txt-input mono"
+                      value={editMgrs}
+                      onChange={e => { setEditMgrs(e.target.value); setEditMsg('') }}
+                      placeholder="31T FJ 13181 46215"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <div className="inline-actions">
+                    <button type="submit" className="go">Appliquer</button>
+                    <button type="button" className="soft-btn" onClick={() => setEditMgrs(fmtCoord({ lat: selM.lat, lng: selM.lng }, 'mgrs'))}>Recharger</button>
+                  </div>
+                  {editMsg && <p className={`form-msg ${editMsg.startsWith('Coordonnée') ? 'err' : 'ok'}`}>{editMsg}</p>}
+                </form>
+              )}
+
               <div className="detail-actions">
                 <button type="button" onClick={centerSelected} disabled={!selPt}>Centrer</button>
                 {selM && <button type="button" className="del" onClick={() => del(selM.id)}>Supprimer</button>}
@@ -546,7 +650,7 @@ function App() {
 
       <nav className="action-rail" aria-label="Actions principales">
         <button type="button" className={`rail-btn${showLeft ? ' active' : ''}`} onClick={toggleLeft}>
-          <span>OPT</span><b>Outils</b>
+          <span>NAV</span><b>GO TO</b>
         </button>
         <button type="button" className={`rail-primary${placing ? ' armed' : ''}`} onClick={togglePlace}>
           <span>{placing ? 'Annuler' : 'Placer'}</span>
