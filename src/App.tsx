@@ -42,8 +42,8 @@ function App() {
   const [cf, setCF] = useState<CoordFormat>('mgrs')
   const [du, setDU] = useState<DistUnit>('meters')
   const [grid, setGrid] = useState<GridMode>('auto')
-  const [showRings, setShowRings] = useState(true)
-  const [showLabels, setShowLabels] = useState(true)
+  const [showRings, setShowRings] = useState(false)
+  const [showLabels, setShowLabels] = useState(false)
   const [showRef, setShowRef] = useState(true)
   const [show3D, setShow3D] = useState(true)
   const [showLine, setShowLine] = useState(true)
@@ -118,6 +118,11 @@ function App() {
     m.addControl(new maplibregl.ScaleControl({ maxWidth: 160 }), 'bottom-left')
     m.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
+    const resizeMap = () => {
+      if (mapRef.current !== m) return
+      window.requestAnimationFrame(() => m.resize())
+    }
+
     const syncNow = () => {
       const c = m.getCenter()
       setView({ lat: c.lat, lng: c.lng, zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch() })
@@ -157,7 +162,14 @@ function App() {
       m.addLayer({ id: 'caseline', type: 'line', source: 'caseline', paint: { 'line-color': '#ff5d65', 'line-width': 2.8, 'line-dasharray': [4, 3] } })
       setReady(true)
       syncNow()
+      resizeMap()
+      window.setTimeout(resizeMap, 150)
+      window.setTimeout(resizeMap, 600)
     })
+
+    window.addEventListener('resize', resizeMap)
+    window.addEventListener('orientationchange', resizeMap)
+    window.visualViewport?.addEventListener('resize', resizeMap)
 
     m.on('mousemove', e => {
       pendingCursor.current = { lat: e.lngLat.lat, lng: e.lngLat.lng }
@@ -194,6 +206,9 @@ function App() {
     return () => {
       if (syncFrame.current !== null) window.cancelAnimationFrame(syncFrame.current)
       if (cursorFrame.current !== null) window.cancelAnimationFrame(cursorFrame.current)
+      window.removeEventListener('resize', resizeMap)
+      window.removeEventListener('orientationchange', resizeMap)
+      window.visualViewport?.removeEventListener('resize', resizeMap)
       mkRef.current.forEach(x => x.remove())
       mkRef.current = []
       m.remove()

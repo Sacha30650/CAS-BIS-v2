@@ -88,10 +88,11 @@ button:disabled { cursor: not-allowed; opacity: 0.52; }
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
   left: 12px;
-  right: 12px;
+  right: auto;
+  width: min(760px, calc(100vw - 24px));
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1.65fr) minmax(112px, 0.9fr);
+  grid-template-columns: 100px minmax(0, 1fr) 154px;
   gap: 8px;
   pointer-events: none;
 }
@@ -196,7 +197,7 @@ button.hud-card:focus-visible,
   top: calc(max(10px, env(safe-area-inset-top)) + 76px);
   left: 12px;
   z-index: 18;
-  display: flex;
+  display: none;
   gap: 7px;
   max-width: min(680px, calc(100vw - 24px));
   overflow-x: auto;
@@ -232,7 +233,7 @@ button.hud-card:focus-visible,
   right: 12px;
   top: 50%;
   z-index: 18;
-  display: grid;
+  display: none;
   gap: 7px;
   transform: translateY(-50%);
 }
@@ -252,7 +253,7 @@ button.hud-card:focus-visible,
 
 .placement-banner {
   position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 122px);
+  top: calc(max(10px, env(safe-area-inset-top)) + 78px);
   left: 50%;
   z-index: 22;
   display: grid;
@@ -618,6 +619,12 @@ button.hud-card:focus-visible,
 .mk.nl .mk-lbl { display: none; }
 
 /* MapLibre polish */
+.maplibregl-map,
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
 .maplibregl-canvas { outline: none; }
 .maplibregl-ctrl-bottom-left { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 84px) !important; left: 12px !important; }
 .maplibregl-ctrl-bottom-right { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 84px) !important; right: 12px !important; }
@@ -641,18 +648,20 @@ button.hud-card:focus-visible,
 @media (min-width: 1024px) {
   .panel-overlay { background: transparent; backdrop-filter: none; pointer-events: none; }
   .panel { pointer-events: auto; }
-  .hud-top { left: 16px; right: 16px; top: 14px; }
-  .mission-strip { top: 92px; left: 16px; }
+  .hud-top { left: 16px; right: auto; top: 14px; }
+  .mission-strip { display: none; }
 }
 
 @media (max-width: 740px) {
   .hud-top {
     left: 8px;
-    right: 8px;
+    right: auto;
+    width: calc(100vw - 16px);
     top: max(8px, env(safe-area-inset-top));
-    grid-template-columns: minmax(74px, 0.7fr) minmax(0, 1.7fr) minmax(82px, 0.82fr);
+    grid-template-columns: 74px minmax(0, 1fr);
     gap: 6px;
   }
+  .selection-card { display: none !important; }
   .brand-card,
   .selection-card { padding: 8px 9px; }
   .brand-lockup { font-size: 0.9rem; }
@@ -664,11 +673,11 @@ button.hud-card:focus-visible,
   .selection-card strong { font-size: 0.68rem; }
   .hud-metrics { gap: 3px; margin-top: 4px; }
   .hud-metrics span { padding: 2px 4px; font-size: 0.52rem; }
-  .mission-strip { top: calc(max(8px, env(safe-area-inset-top)) + 66px); left: 8px; right: 8px; max-width: none; }
+  .mission-strip { display: none; }
   .mission-pill { min-height: 32px; padding: 4px 9px; }
-  .quick-stack { right: 8px; top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 136px); transform: none; }
+  .quick-stack { display: none; }
   .quick-stack button { min-width: 66px; min-height: 35px; font-size: 0.68rem; }
-  .placement-banner { top: calc(max(8px, env(safe-area-inset-top)) + 108px); }
+  .placement-banner { top: calc(max(8px, env(safe-area-inset-top)) + 70px); }
   .panel {
     left: 8px !important;
     right: 8px !important;
@@ -695,7 +704,8 @@ button.hud-card:focus-visible,
   .action-rail { width: calc(100vw - 14px); grid-template-columns: 1fr minmax(112px, 1.15fr) 1fr; border-radius: 22px; }
   .action-rail button { min-height: 50px; }
   .maplibregl-ctrl-bottom-left { display: none; }
-  .maplibregl-ctrl-bottom-right { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 132px) !important; }
+  .maplibregl-ctrl-group { display: none !important; }
+  .maplibregl-ctrl-bottom-right { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 96px) !important; }
 }
 
 @media (max-width: 390px) {
