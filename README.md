@@ -25,9 +25,24 @@ Prototype civil d'entraînement cartographique. Aucune donnée réelle. Aucun us
 ```bash
 npm install
 npm run dev
+npm test
+npm run typecheck
 npm run build
 ```
 
-## Déploiement
+## Build & déploiement
 
-https://vercel.com/new/clone?repository-url=https://github.com/Sacha30650/CAS-BIS-v2
+- Build racine compatible Vercel / static host classique :
+
+```bash
+npm run build
+```
+
+- Build GitHub Pages, avec assets sous `/CAS-BIS-v2/` :
+
+```bash
+npm run build:pages
+npx gh-pages -d dist
+```
+
+GitHub Pages est l'hébergement recommandé pour ce repo.

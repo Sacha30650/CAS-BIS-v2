@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+const repositoryBase = '/CAS-BIS-v2/'
+
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
     target: 'es2021',
   },
-  base: '/CAS-BIS-v2/',
-})
+  base: mode === 'github-pages' ? repositoryBase : '/',
+}))
