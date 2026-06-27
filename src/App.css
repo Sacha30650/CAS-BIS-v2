@@ -276,6 +276,24 @@ button.hud-card:focus-visible,
 .placement-banner span { font-size: 0.64rem; font-weight: 950; letter-spacing: 0.16em; text-transform: uppercase; }
 .placement-banner b { font-size: 0.9rem; }
 .placement-banner small { font-weight: 750; opacity: 0.76; }
+.map-alert {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 78px);
+  left: 50%;
+  z-index: 23;
+  width: min(430px, calc(100vw - 28px));
+  padding: 9px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  border-radius: 14px;
+  background: rgba(20, 12, 2, 0.86);
+  color: var(--amb);
+  backdrop-filter: blur(14px);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-align: center;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
 
 /* Panels */
 .panel-overlay {
@@ -393,6 +411,12 @@ button.hud-card:focus-visible,
   font-size: 0.72rem;
   font-weight: 800;
 }
+.field-hint {
+  color: var(--mut);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
 .dd,
 .txt-input {
   width: 100%;
@@ -461,6 +485,29 @@ button.hud-card:focus-visible,
 .theme-chip.red.active { border-color: rgba(255, 93, 101, 0.6); }
 .theme-chip.nvg.active { border-color: rgba(0, 255, 0, 0.55); }
 .readout-grid { margin-bottom: 16px; }
+.mission-io {
+  display: grid;
+  gap: 8px;
+  margin: 9px 16px;
+  padding: 12px;
+  border: 1px solid rgba(255, 209, 102, 0.24);
+  border-radius: 17px;
+  background: rgba(255, 209, 102, 0.045);
+}
+.mission-io small {
+  color: var(--mut);
+  font-size: 0.72rem;
+  line-height: 1.32;
+}
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .readout { display: grid; gap: 5px; padding: 11px 12px; }
 .readout span { color: var(--grn); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.62rem; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; }
 .readout code,
@@ -729,6 +776,7 @@ button.hud-card:focus-visible,
   .panel-bar { padding: 14px 14px 10px; }
   .panel-bar h2 { font-size: 1.08rem; }
   .action-card, .blk, .toggle-grid, .readout, .cas-card, .selection-detail { margin-left: 12px; margin-right: 12px; }
+  .mission-io { margin-left: 12px; margin-right: 12px; }
   .grid-fields { grid-template-columns: 1fr; }
   .toggle-grid { grid-template-columns: 1fr; }
   .theme-row { grid-template-columns: repeat(2, 1fr); }

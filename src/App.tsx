@@ -3,8 +3,15 @@ import maplibregl, { type GeoJSONSource } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
 
-import { demoMarkers, sideColors, sideNames, sideShort, typeIcons, typeNames } from './data'
+import { demoMarkers, sideNames, sideShort, typeIcons, typeNames } from './data'
 import { mapStyle } from './mapStyle'
+import {
+  loadMissionState,
+  normalizeMissionState,
+  saveMissionState,
+  serializeMissionState,
+  type MissionState,
+} from './missionStorage'
 import {
   bearing, card, decl, fmtAlt, fmtCoord, fmtDist, fmtHdg, fmtKt,
   mgrsGridFC, havM, lineFC, parseMgrsCoord, ringsFC, revBrg, slant, toMils,
@@ -14,6 +21,7 @@ import type { CoordFormat, DistUnit, GridMode, LatLng, MarkerType, Role, Side, T
 
 const emptyFC = { type: 'FeatureCollection' as const, features: [] }
 const FT_PER_M = 3.28084
+const loadedMission = typeof window !== 'undefined' ? loadMissionState() : null
 
 function altToInput(altM: number, unit: DistUnit): string {
   return unit === 'feet' ? String(Math.round(altM * FT_PER_M)) : String(Math.round(altM))
@@ -25,12 +33,30 @@ function altInputToMeters(raw: string, unit: DistUnit): number | null {
   return unit === 'feet' ? value / FT_PER_M : value
 }
 
+function sideTone(side: Side): string {
+  const token = side === 'friendly' ? 'frd' : side === 'hostile' ? 'eny' : 'neu'
+  return `var(--mk-${token})`
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 function App() {
   // Refs
   const mapRef = useRef<maplibregl.Map | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const mkRef = useRef<maplibregl.Marker[]>([])
   const mkElRef = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const importRef = useRef<HTMLInputElement | null>(null)
   const syncFrame = useRef<number | null>(null)
   const cursorFrame = useRef<number | null>(null)
   const pendingCursor = useRef<LatLng | null>(null)
@@ -39,8 +65,8 @@ function App() {
   const pType = useRef<MarkerType>('infantry')
 
   // State
-  const [markers, setMarkers] = useState<TMarker[]>(demoMarkers)
-  const [sel, setSel] = useState(demoMarkers[0].id)
+  const [markers, setMarkers] = useState<TMarker[]>(loadedMission?.markers ?? demoMarkers)
+  const [sel, setSel] = useState(loadedMission?.selectedId ?? demoMarkers[0].id)
   const [click, setClick] = useState<LatLng | null>(null)
   const [cur, setCur] = useState<LatLng | null>(null)
   const [view, setView] = useState<ViewState>({ lat: 43.7598, lng: 4.4087, zoom: 12.5, bearing: 0, pitch: 0 })
@@ -50,18 +76,18 @@ function App() {
   const [cSide, setCSide] = useState<Side>('friendly')
   const [cType, setCType] = useState<MarkerType>('infantry')
   const [placing, setPlacing] = useState(false)
-  const [cf, setCF] = useState<CoordFormat>('mgrs')
-  const [du, setDU] = useState<DistUnit>('meters')
-  const [altUnit, setAltUnit] = useState<DistUnit>('meters')
-  const [grid, setGrid] = useState<GridMode>('auto')
-  const [showRings, setShowRings] = useState(false)
-  const [showLabels, setShowLabels] = useState(false)
-  const [showRef, setShowRef] = useState(true)
-  const [show3D, setShow3D] = useState(true)
-  const [showLine, setShowLine] = useState(true)
-  const [role, setRole] = useState<Role>('JTAC')
-  const [vis, setVis] = useState<Record<Side, boolean>>({ friendly: true, hostile: true, neutral: true })
-  const [theme, setTheme] = useState<Theme>('day')
+  const [cf, setCF] = useState<CoordFormat>(loadedMission?.coordFormat ?? 'mgrs')
+  const [du, setDU] = useState<DistUnit>(loadedMission?.distanceUnit ?? 'meters')
+  const [altUnit, setAltUnit] = useState<DistUnit>(loadedMission?.altitudeUnit ?? 'meters')
+  const [grid, setGrid] = useState<GridMode>(loadedMission?.grid ?? 'auto')
+  const [showRings, setShowRings] = useState(loadedMission?.showRings ?? false)
+  const [showLabels, setShowLabels] = useState(loadedMission?.showLabels ?? false)
+  const [showRef, setShowRef] = useState(loadedMission?.showRef ?? true)
+  const [show3D, setShow3D] = useState(loadedMission?.show3D ?? true)
+  const [showLine, setShowLine] = useState(loadedMission?.showLine ?? true)
+  const [role, setRole] = useState<Role>(loadedMission?.role ?? 'JTAC')
+  const [vis, setVis] = useState<Record<Side, boolean>>(loadedMission?.visibility ?? { friendly: true, hostile: true, neutral: true })
+  const [theme, setTheme] = useState<Theme>(loadedMission?.theme ?? 'day')
 
   // UI density
   const [showLeft, setShowLeft] = useState(false)
@@ -74,6 +100,8 @@ function App() {
   const [editMgrs, setEditMgrs] = useState('')
   const [editAlt, setEditAlt] = useState(altToInput(demoMarkers[0].altM, 'meters'))
   const [editMsg, setEditMsg] = useState('')
+  const [storageMsg, setStorageMsg] = useState(loadedMission ? 'Mission locale restaurée' : '')
+  const [mapMsg, setMapMsg] = useState('')
 
   // Derived
   const selM = useMemo(() => markers.find(m => m.id === sel) ?? null, [sel, markers])
@@ -104,6 +132,11 @@ function App() {
 
   const sd = selPt ? havM({ lat: view.lat, lng: view.lng }, selPt) : null
   const sb = selPt ? bearing({ lat: view.lat, lng: view.lng }, selPt) : null
+  const roleFocus = role === 'Pilot'
+    ? 'Cap, slant et retour priorité pilote'
+    : role === 'Observer'
+      ? 'Coordonnées, filtres et observation'
+      : 'MGRS, IP→Cible et guidage JTAC'
   const coordOpts: { v: CoordFormat; l: string }[] = [
     { v: 'mgrs', l: 'MGRS 10-digit' }, { v: 'utm', l: 'UTM WGS84' }, { v: 'dms', l: 'DMS' }, { v: 'dd', l: 'Décimal' },
   ]
@@ -114,6 +147,28 @@ function App() {
     const root = document.documentElement
     Object.entries(themes[theme]).forEach(([k, v]) => root.style.setProperty(k, v))
   }, [theme])
+
+  const missionSnapshot = useMemo<Omit<MissionState, 'version' | 'savedAt'>>(() => ({
+    markers,
+    selectedId: sel,
+    coordFormat: cf,
+    distanceUnit: du,
+    altitudeUnit: altUnit,
+    grid,
+    showRings,
+    showLabels,
+    showRef,
+    show3D,
+    showLine,
+    role,
+    visibility: vis,
+    theme,
+  }), [altUnit, cf, du, grid, markers, role, sel, show3D, showLabels, showLine, showRef, showRings, theme, vis])
+
+  useEffect(() => {
+    if (!ready) return
+    saveMissionState(missionSnapshot)
+  }, [missionSnapshot, ready])
 
   // Sync refs for map event handlers
   useEffect(() => { pActive.current = placing }, [placing])
@@ -197,6 +252,12 @@ function App() {
       window.setTimeout(resizeMap, 150)
       window.setTimeout(resizeMap, 600)
     })
+    m.on('error', e => {
+      const message = e.error?.message ?? 'Couche carte indisponible'
+      if (/Failed to fetch|404|NetworkError|tile|glyph|DEM/i.test(message)) {
+        setMapMsg('Fond carte partiellement indisponible — vérifiez le réseau')
+      }
+    })
 
     window.addEventListener('resize', resizeMap)
     window.addEventListener('orientationchange', resizeMap)
@@ -220,8 +281,9 @@ function App() {
       const s = pSide.current, t = pType.current
       const id = `${s}-${Date.now()}`
       setMarkers(c => {
+        const sameSideCount = c.filter(marker => marker.side === s).length
         const nm: TMarker = {
-          id, name: `${sideShort[s]}-${String(c.length + 1).padStart(2, '0')}`,
+          id, name: `${sideShort[s]}-${String(sameSideCount + 1).padStart(2, '0')}`,
           side: s, type: t, lat: pt.lat, lng: pt.lng,
           altM: t === 'aircraft' ? Math.round(3000 + Math.random() * 3000) : Math.round(30 + Math.random() * 100),
           hdg: t === 'aircraft' ? Math.round(Math.random() * 360) : 0,
@@ -257,7 +319,7 @@ function App() {
     mkElRef.current.clear()
 
     markers.filter(x => vis[x.side]).forEach(x => {
-      const col = sideColors[x.side]
+      const col = sideTone(x.side)
       const el = document.createElement('button')
       const badge = document.createElement('span')
       const code = document.createElement('span')
@@ -353,13 +415,14 @@ function App() {
     flyToPoint(pt, 14)
   }
   const del = (id: string) => {
+    if (!window.confirm('Supprimer cette unité de la mission ?')) return
     setMarkers(c => {
       const next = c.filter(m => m.id !== id)
       setSel(cur => cur === id ? (next[0]?.id ?? '') : cur)
       return next
     })
   }
-  const reset = () => { setMarkers(demoMarkers); setSel(demoMarkers[0].id); setClick(null); setGotoMsg(''); setEditMsg('') }
+  const reset = () => { setMarkers(demoMarkers); setSel(demoMarkers[0].id); setClick(null); setGotoMsg(''); setEditMsg(''); setStorageMsg('Mission réinitialisée') }
   const toggleLeft = () => { setShowLeft(v => !v); setShowRight(false) }
   const toggleRight = () => { setShowRight(v => !v); setShowLeft(false) }
   const togglePlace = () => { setPlacing(v => !v); setShowLeft(false); setShowRight(false) }
@@ -408,6 +471,40 @@ function App() {
     m.fitBounds(b, { padding: 86, maxZoom: 14, duration: 900 })
   }
   const resetNorth = () => mapRef.current?.easeTo({ bearing: 0, pitch: show3D ? 45 : 0, duration: 650 })
+  const exportMission = () => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    downloadTextFile(`cas-bis-mission-${stamp}.json`, serializeMissionState(missionSnapshot))
+    setStorageMsg('Mission exportée en JSON')
+  }
+  const importMissionFile = async (file: File | null) => {
+    if (!file) return
+    try {
+      const imported = normalizeMissionState(JSON.parse(await file.text()) as unknown)
+      if (!imported) {
+        setStorageMsg('Import impossible : fichier mission invalide')
+        return
+      }
+      setMarkers(imported.markers)
+      setSel(imported.selectedId)
+      setCF(imported.coordFormat)
+      setDU(imported.distanceUnit)
+      setAltUnit(imported.altitudeUnit)
+      setGrid(imported.grid)
+      setShowRings(imported.showRings)
+      setShowLabels(imported.showLabels)
+      setShowRef(imported.showRef)
+      setShow3D(imported.show3D)
+      setShowLine(imported.showLine)
+      setRole(imported.role)
+      setVis(imported.visibility)
+      setTheme(imported.theme)
+      setStorageMsg('Mission importée')
+    } catch {
+      setStorageMsg('Import impossible : JSON invalide')
+    } finally {
+      if (importRef.current) importRef.current.value = ''
+    }
+  }
 
   return (
     <main className={`app${placing ? ' placing' : ''}${showLeft ? ' L-open' : ''}${showRight ? ' R-open' : ''}`}>
@@ -422,6 +519,7 @@ function App() {
             <small>Touchez la carte pour poser un marqueur</small>
           </div>
         )}
+        {mapMsg && <div className="map-alert" role="status">{mapMsg}</div>}
       </div>
 
       <section className={`hud-top${hudMin ? ' min' : ''}`} aria-label="Tableau de bord">
@@ -536,13 +634,14 @@ function App() {
               </label>
               <label className="field">Grille
                 <select className="dd" value={grid} onChange={e => setGrid(e.target.value as GridMode)}>
-                  <option value="auto">Auto</option><option value="fine">Fine</option><option value="off">Off</option>
+                  <option value="auto">Auto 1 km</option><option value="fine">Fine 500 m</option><option value="off">Off</option>
                 </select>
               </label>
               <label className="field">Rôle
                 <select className="dd" value={role} onChange={e => setRole(e.target.value as Role)}>
                   <option value="JTAC">JTAC</option><option value="Pilot">Pilote</option><option value="Observer">Observateur</option>
                 </select>
+                <small className="field-hint">{roleFocus}</small>
               </label>
             </div>
 
@@ -551,7 +650,7 @@ function App() {
               <label><input type="checkbox" checked={showLine} onChange={e => setShowLine(e.target.checked)} /> Ligne IP→Cible</label>
               <label><input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} /> Labels points</label>
               <label><input type="checkbox" checked={showRef} onChange={e => setShowRef(e.target.checked)} /> Labels carte</label>
-              <label><input type="checkbox" checked={show3D} onChange={e => setShow3D(e.target.checked)} /> Relief 3D</label>
+              <label><input type="checkbox" checked={show3D} onChange={e => setShow3D(e.target.checked)} /> Vue inclinée</label>
             </div>
 
             <div className="blk">
@@ -561,6 +660,23 @@ function App() {
                   <button key={t} type="button" className={`theme-chip ${t}${theme === t ? ' active' : ''}`} onClick={() => setTheme(t)}>{themeNames[t]}</button>
                 ))}
               </div>
+            </div>
+
+            <div className="mission-io">
+              <span className="tag">Mission</span>
+              <div className="inline-actions">
+                <button type="button" className="soft-btn" onClick={exportMission}>Exporter</button>
+                <button type="button" className="soft-btn" onClick={() => importRef.current?.click()}>Importer</button>
+              </div>
+              <input
+                ref={importRef}
+                className="file-input"
+                type="file"
+                accept="application/json,.json"
+                onChange={e => { void importMissionFile(e.target.files?.[0] ?? null) }}
+              />
+              <small>Autosave local actif. Exportez un JSON pour partager ou restaurer une mission.</small>
+              {storageMsg && <p className="form-msg ok">{storageMsg}</p>}
             </div>
 
             <div className="readout-grid">
@@ -670,7 +786,7 @@ function App() {
             <div className="marker-list-panel" aria-label="Liste des points">
               {markers.map(m => (
                 <button key={m.id} type="button" className={`marker-card ${m.side}${sel === m.id ? ' active' : ''}${vis[m.side] ? '' : ' hidden-side'}`} onClick={() => { focus(m); setShowRight(false) }}>
-                  <span className="marker-token" style={{ borderColor: sideColors[m.side], color: sideColors[m.side] }}>{typeIcons[m.type]}</span>
+                  <span className="marker-token" style={{ borderColor: sideTone(m.side), color: sideTone(m.side) }}>{typeIcons[m.type]}</span>
                   <span className="marker-copy"><b>{m.name}</b><small>{typeNames[m.type]} · {fmtAlt(m.altM, altUnit)}</small></span>
                   <span className="marker-side">{sideNames[m.side]}</span>
                 </button>

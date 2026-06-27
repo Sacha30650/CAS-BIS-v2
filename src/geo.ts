@@ -165,11 +165,22 @@ export function fromUTM(zoneNum: number, easting: number, northing: number): Lat
 }
 
 // --- MGRS km grid ---
-function mgrsGridSpacing(zoom: number): number {
-  if (zoom >= 14) return 1000    // 1 km
-  if (zoom >= 11) return 1000    // 1 km
-  if (zoom >= 9) return 10000    // 10 km
-  return 100000                   // 100 km
+function mgrsGridSpacing(zoom: number, mode: GridMode): number {
+  if (mode === 'fine') {
+    if (zoom >= 15) return 100     // 100 m
+    if (zoom >= 11) return 500     // 500 m
+    if (zoom >= 8) return 1000     // 1 km
+    return 10000                   // 10 km
+  }
+  if (zoom >= 11) return 1000      // 1 km
+  if (zoom >= 9) return 10000      // 10 km
+  return 100000                    // 100 km
+}
+
+function gridLabel(value: number, spacing: number): string {
+  const km = ((value % 100000) + 100000) % 100000 / 1000
+  if (spacing < 1000) return km.toFixed(1).padStart(4, '0')
+  return String(Math.floor(km)).padStart(2, '0')
 }
 
 export function mgrsGridFC(
@@ -179,7 +190,7 @@ export function mgrsGridFC(
 ) {
   if (mode === 'off') return { type: 'FeatureCollection' as const, features: [] as object[] }
 
-  const spacing = mgrsGridSpacing(zoom)
+  const spacing = mgrsGridSpacing(zoom, mode)
   const wLat = b.getSouth(), nLat = b.getNorth()
   const wLng = b.getWest(), eLng = b.getEast()
 
@@ -215,7 +226,7 @@ export function mgrsGridFC(
         geometry: { type: 'LineString', coordinates: [[top.lng, top.lat], [bot.lng, bot.lat]] },
       })
       // Label at top of line
-      const labelNum = String(Math.floor((e % 100000) / 1000)).padStart(2, '0')
+      const labelNum = gridLabel(e, spacing)
       labelFeatures.push({
         type: 'Feature', properties: { label: labelNum, axis: 'v' },
         geometry: { type: 'Point', coordinates: [top.lng, top.lat] },
@@ -231,7 +242,7 @@ export function mgrsGridFC(
         geometry: { type: 'LineString', coordinates: [[left.lng, left.lat], [right.lng, right.lat]] },
       })
       // Label at left of line
-      const labelNum = String(Math.floor((nn % 100000) / 1000)).padStart(2, '0')
+      const labelNum = gridLabel(nn, spacing)
       labelFeatures.push({
         type: 'Feature', properties: { label: labelNum, axis: 'h' },
         geometry: { type: 'Point', coordinates: [left.lng, left.lat] },
